@@ -1,0 +1,146 @@
+mql5
+//+------------------------------------------------------------------+
+//|                                                     AW OsMa EA    |
+//|                                           Developer: Forex Robot Easy Team |
+//|                                           Website: forexroboteasy.com |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//|                                            Customizable Parameters |
+//+------------------------------------------------------------------+
+input double LotSize = 0.01;                         // Lot size for opening orders
+input double StopLoss = 50;                          // Stop loss level
+input double TakeProfit = 100;                       // Take profit level
+input double TrailingStop = 50;                      // Trailing stop level
+
+//+------------------------------------------------------------------+
+//|                                                       Order Types |
+//+------------------------------------------------------------------+
+enum OrderType
+{
+    MARKET,
+    STOP,
+    PENDING
+}
+
+//+------------------------------------------------------------------+
+//|                                                         Risk Management |
+//+------------------------------------------------------------------+
+input double MaxRiskPercentage = 2;                  // Maximum percentage of account balance to risk per trade
+
+//+------------------------------------------------------------------+
+//|                                                          Trading Hours |
+//+------------------------------------------------------------------+
+input int StartHour = 0;                             // Start trading hour
+input int EndHour = 23;                              // End trading hour
+
+//+------------------------------------------------------------------+
+//|                                                     Global Variables |
+//+------------------------------------------------------------------+
+double AccountBalance;
+double MaxLotSize;
+double MinLotSize;
+bool IsTradingAllowed;
+
+//+------------------------------------------------------------------+
+//|                                                  Initialization Function |
+//+------------------------------------------------------------------+
+void OnInit()
+{
+    AccountBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+    MaxLotSize = MarketInfo(Symbol(), MODE_MAXLOT);
+    MinLotSize = MarketInfo(Symbol(), MODE_MINLOT);
+    IsTradingAllowed = true;
+}
+
+//+------------------------------------------------------------------+
+//|                                                       Trading Function |
+//+------------------------------------------------------------------+
+void OnTick()
+{
+    if (!IsTradingAllowed) return;
+    
+    double OsMa = CalculateOsMA();
+    
+    // Check if OsMA is above zero line
+    if (OsMa > 0)
+    {
+        // Open a buy order
+        OpenOrder(OrderType.MARKET, LotSize);
+    }
+    // Check if OsMA is below zero line
+    else if (OsMa < 0)
+    {
+        // Open a sell order
+        OpenOrder(OrderType.MARKET, -LotSize);
+    }
+}
+
+//+------------------------------------------------------------------+
+//|                                                       Open Order Function |
+//+------------------------------------------------------------------+
+void OpenOrder(OrderType orderType, double volume)
+{
+    double stopLoss = NormalizeDouble(OrderType.STOP ? StopLoss : SymbolInfoDouble(Symbol(), SYMBOL_ASK) - StopLoss * _Point, Digits);
+    double takeProfit = NormalizeDouble(OrderType.STOP ? TakeProfit : SymbolInfoDouble(Symbol(), SYMBOL_BID) + TakeProfit * _Point, Digits);
+    
+    if (volume > MaxLotSize)
+    {
+        volume = MaxLotSize;
+    }
+    else if (volume < MinLotSize)
+    {
+        volume = MinLotSize;
+    }
+    
+    double riskAmount = AccountBalance * MaxRiskPercentage / 100;
+    double maxPossibleVolume = NormalizeDouble(riskAmount / MathAbs(stopLoss * _Point), 2);
+    
+    if (volume > maxPossibleVolume)
+    {
+        volume = maxPossibleVolume;
+    }
+    
+    // Place the order
+    if (orderType == OrderType.MARKET)
+    {
+        OrderSend(Symbol(), OP_BUY, volume, SymbolInfoDouble(Symbol(), SYMBOL_ASK), 0, stopLoss, takeProfit, 'AW OsMa EA', MagicNumber(), 0, Green);
+    }
+    else if (orderType == OrderType.STOP)
+    {
+        OrderSend(Symbol(), OP_SELLSTOP, volume, SymbolInfoDouble(Symbol(), SYMBOL_ASK) - TrailingStop * _Point, 0, stopLoss, takeProfit, 'AW OsMa EA', MagicNumber(), 0, Red);
+    }
+    else if (orderType == OrderType.PENDING)
+    {
+        OrderSend(Symbol(), OP_SELLLIMIT, volume, SymbolInfoDouble(Symbol(), SYMBOL_ASK) + TrailingStop * _Point, 0, stopLoss, takeProfit, 'AW OsMa EA', MagicNumber(), 0, Blue);
+    }
+}
+
+//+------------------------------------------------------------------+
+//|                                                       Calculate OsMA Function |
+//+------------------------------------------------------------------+
+double CalculateOsMA()
+{
+    double macd = iMACD(Symbol(), PERIOD_CURRENT, 12, 26, 9, PRICE_CLOSE, MODE_MAIN, 0);
+    double signal = iMACD(Symbol(), PERIOD_CURRENT, 12, 26, 9, PRICE_CLOSE, MODE_SIGNAL, 0);
+    double osma = macd - signal;
+    
+    return osma;
+}
+
+//+------------------------------------------------------------------+
+//|                                                       Other Helper Functions |
+//+------------------------------------------------------------------+
+int MagicNumber()
+{
+    return 123456;
+}
+
+//+------------------------------------------------------------------+
+//|                                                       Program Conclusion |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+    Print('AW OsMa EA stopped. Reason: ', reason);
+}
+
